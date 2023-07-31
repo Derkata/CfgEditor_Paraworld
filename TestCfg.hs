@@ -399,10 +399,6 @@ main =
              do
                let carg1= convertSet (path,value)
                let set = addToTree ptr (fst carg1) (snd carg1)
-               if strongEqTree set ptr then
-                  do
-                    die "Exit with Code (201) - Nothing was changed"
-                 else do
                (tempName, tempHandle) <- openTempFile "." "temp"
                hPutStr tempHandle $ show set
                hClose handle
