@@ -240,6 +240,10 @@ iotest b hpath =
           putStrLn $ "Command: Set \n| argpath = "++arg1++"\n| argvalue = "++arg2
           let carg1= convertSet (arg1,arg2)
           let set = addToTree ptr (fst carg1) (snd carg1)
+          if strongEqTree set ptr then do
+                  putStrLn "Set Failed | Nothing was changed"
+                  iotest False hpath
+          else do
           (tempName, tempHandle) <- openTempFile "." "temp"
           hPutStr tempHandle $ show set
           hClose handle
@@ -290,6 +294,7 @@ eqTree (Node _ _) (CV _ _) = False
 eqTree (CV n1 _) (CV n2 _) = n1==n2
 eqTree (Node n1 t1) (Node n2 t2) = n1 == n2 
 addToTree::Tree->[String]->(VarName,Value)->Tree
+addToTree y@(Node root tree) [] (vname,vvalue) = y
 addToTree y@(Node root tree) [x] (vname,vvalue)
   |root == x = if null search then Node root $tree++[(CV vname vvalue)] else Node root filtered
   |otherwise = y
@@ -313,7 +318,7 @@ convertGet  = splitOn "/"
 getTree (CV name v) [x]
  |name==x = v
  |otherwise = "Err:No value found"
-
+getTree (Node root _) [x] = "Err:No value found"
 getTree (Node root tree) (x:y:xs)
   |root == x && (not$null filtNodes) = getTree (head filtNodes) (y:xs)
   |root == x && (not$null filtLeafs) = getTree (head filtLeafs) (y:xs)
@@ -325,6 +330,7 @@ getTree (Node root tree) (x:y:xs)
 
 deleteTree1::Tree->[String]->Tree
 deleteTree1 q@(CV _ _ ) _ = q
+deleteTree1 q [x] = q 
 deleteTree1 a@(Node root tree) [x,y]
   |root == x && (not$null filtNodes) = Node root filteredNodes
   |root == x && (not$null filtLeafs) = Node root filteredLeafs
@@ -406,7 +412,7 @@ main =
               |otherwise -> if elem command ["-s","--set"] then do
                     die "Exit with Code (101) - wrong number of parameters" -- !#par
                else
-                die "102" -- !command
+                die "Exit with Code (102) - Wrong Command"
             com@[command,path]
              |elem com [["-r",path],["--remove",path]] ->
                do
@@ -449,10 +455,12 @@ trComm str = case com of
    "REMOVE" -> "-r":args
    _ -> ["Error"]
   where
-    [t,d] = map ($str) [takeWhile (/='('),dropWhile (/='(')]
-    com = map toUpper t
-    args = splitOn "," $ tail $ init d
+    [t,d] = map ($str) [takeWhile (/='('),dropWhile (/='(') . takeWhile (/=')')]
+    remwhite = concat . words
+    com = remwhite $ map toUpper t
+    args = splitOn ","  $ remwhite $ tail d
 
 cdfix str =if null rest || null (tail rest) then [""] else [cd,tail rest]
   where
     (cd,rest) = splitAt 2 str
+    
