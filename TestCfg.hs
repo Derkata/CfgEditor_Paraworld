@@ -286,7 +286,7 @@ iotest b hpath =
 strongEqTree::Tree->Tree->Bool
 strongEqTree (CV _ _) (Node _ _) = False
 strongEqTree (Node _ _) (CV _ _) = False
-strongEqTree (CV n1 _) (CV n2 _) = n1==n2
+strongEqTree (CV n1 t1) (CV n2 t2) = n1==n2 && t1==t2
 strongEqTree (Node n1 t1) (Node n2 t2) = n1 == n2 && length t1==length t2 && and (zipWith (strongEqTree) t1 t2)
 
 eqTree (CV _ _) (Node _ _) = False
