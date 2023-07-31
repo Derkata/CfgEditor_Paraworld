@@ -12,10 +12,10 @@ Commands in terminal:
 * PWD - current directory
 (Not case sensitive,not whitespace sensitive)
 
-Commands in exe:\n
- Get -> -g path | --get
- Remove -> -r path | --remove path
- Set -> -s path value | --set path value
+Commands in exe:
+ * Get -> -g path | --get
+ * Remove -> -r path | --remove path
+ * Set -> -s path value | --set path value
 
 Notes:
 * Parses without whitespaces.
