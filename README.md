@@ -13,7 +13,7 @@ Commands in terminal:
 (Not case sensitive,not whitespace sensitive)
 
 Commands in exe:
- * Get -> -g path | --get
+ * Get -> -g path | --get path
  * Remove -> -r path | --remove path
  * Set -> -s path value | --set path value
 
