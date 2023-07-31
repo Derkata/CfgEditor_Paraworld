@@ -10,7 +10,7 @@ Commands in terminal:
 * Q - exit
 * CD path - change directory
 * PWD - current directory
-Commands: Not case sensitive;Not whitespace sensitive
+
 
 Commands in exe:
  * Get -> -g path | --get path
@@ -19,6 +19,7 @@ Commands in exe:
 
 Notes:
 * Parses without whitespaces.
+* Commands in terminal: Not case sensitive;Not whitespace sensitive
 * Errors exit with code 1 (Could't change it)
 * stderr prints errors
 * If there is no Settings.cfg in the APPDATA folder it will ask you for a valid path
