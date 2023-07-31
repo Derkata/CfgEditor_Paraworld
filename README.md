@@ -10,7 +10,7 @@ Commands in terminal:
 * Q - exit
 * CD path - change directory
 * PWD - current directory
-(Not case sensitive,not whitespace sensitive)
+Commands: Not case sensitive;Not whitespace sensitive
 
 Commands in exe:
  * Get -> -g path | --get path
