@@ -205,6 +205,7 @@ iotest::Bool->String->IO String
 iotest b hpath =
   do
      tempPath <- getAppUserDataDirectory "SpieleEntwicklungsKombinat\\Paraworld"
+     check <- checkMonadSpam hpath
      handle <- openFile hpath ReadMode
      contents <- hGetContents handle
      let filt = modifySymbol '|' False $concat $ words contents
@@ -384,7 +385,9 @@ main =
   do 
      hcodepath <- getAppUserDataDirectory "SpieleEntwicklungsKombinat\\Paraworld\\Settings.cfg"
      tempPath <- getAppUserDataDirectory "SpieleEntwicklungsKombinat\\Paraworld"
-     check <- checkMonadSpam hcodepath
+     check <- checkMonadSingle hcodepath
+     if not check then die "No Settings file found in AppData"
+     else do
      args<-getArgs
      handle <- openFile hcodepath ReadWriteMode
      contents <- hGetContents handle
@@ -433,9 +436,10 @@ main =
                   putStrLn $ getTree ptr carg
                   return "GetLow"
              |otherwise -> die "Exit with Code (102) - Wrong Command"
-            _ -> do
+            [] -> do
                   putStrLn hcodepath
                   iotest True hcodepath
+            _ -> die "Exit with Code (666) No valid arguments"
      else die "Exit with Code (100) - Parse Error"
       
 
