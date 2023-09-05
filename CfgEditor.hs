@@ -6,7 +6,7 @@ import System.IO
 import Data.List.Split (splitOn)
 import System.Environment
 import System.Directory
-import Data.Char (isAsciiLower, isAsciiUpper, isDigit,toUpper,isUpper,isLower)
+import Data.Char (isAsciiLower, isAsciiUpper, isDigit,toUpper,isUpper,isLower, isSpace)
 import Control.Exception
 import System.Exit
 
@@ -170,19 +170,55 @@ parseCV =
     char '\''
     return (CV varname s)
 
+eqPart::Parser String
+eqPart = do
+     spaces
+     a<-reserved "="
+     spaces
+     b<-many $ satisfy (/= '\'')
+     char '\''
+     return (a++"\'"++b++"\'")
+     <|>
+     spaces
 
 parseTree::Parser Tree
 parseTree =
   do
      root <- var
+     spaces
+     a<-eqPart
      reserved "{"
      --ls<- parseCV
      ls <-sepBy1 (spaces *> char '|' <* spaces) parseTree
      reserved "}"
-     return  (Node root ls)
+     return  (Node (root++a) ls)
    <|>
    parseCV
 
+{- next time will try something for now is gg 
+freeParseTree :: Parser Tree
+freeParseTree =  
+  do 
+     spaces 
+     root <- var
+     spaces
+     a<-eqPart
+     spaces
+     reserved "{"
+     spaces
+     ls <-sepBy1 (spaces *> char '|' <* spaces) freeParseTree
+     spaces
+     reserved "}"
+     return  (Node (root++a) ls)
+   <|>
+   parseCV
+   <|>
+   do
+    spaces
+    varname <- var
+    s <- many $ satisfy (/= '\'')
+    return (CV varname s)
+-}
 
 
 tryExtract str = if null datas then (CV "Parse Error" "")
@@ -196,6 +232,7 @@ modifySymbol :: Char -> Bool -> [Char] -> [Char]
 modifySymbol _ b [] = []
 modifySymbol _ b [x]  = [x]
 modifySymbol s b (x:y:xs)
+ |isSpace x && not b = modifySymbol s b (y:xs)
  |(x=='\'') && alphanumeric y && b = x:s:modifySymbol s False (y:xs)
  |(x=='\'') && alphanumeric y = x:y:modifySymbol s True (xs)
  |x=='}' && alphanumeric y  = x:s:modifySymbol s b (y:xs)
@@ -208,7 +245,7 @@ iotest b hpath =
      check <- checkMonadSpam hpath
      handle <- openFile hpath ReadMode
      contents <- hGetContents handle
-     let filt = modifySymbol '|' False $concat $ words contents
+     let filt = modifySymbol '|' False . modifySymbol  '|' False $ contents
      putStrLn "Parsing..."
      let ptr = tryExtract filt
      if (not$ eqTree ptr (CV "Parse Error" [])) then do
@@ -293,7 +330,7 @@ strongEqTree (Node n1 t1) (Node n2 t2) = n1 == n2 && length t1==length t2 && and
 eqTree (CV _ _) (Node _ _) = False
 eqTree (Node _ _) (CV _ _) = False
 eqTree (CV n1 _) (CV n2 _) = n1==n2
-eqTree (Node n1 t1) (Node n2 t2) = n1 == n2 
+eqTree (Node n1 t1) (Node n2 t2) = n1 == n2
 addToTree::Tree->[String]->(VarName,Value)->Tree
 addToTree y@(Node root tree) [] (vname,vvalue) = y
 addToTree y@(Node root tree) [x] (vname,vvalue)
@@ -331,7 +368,7 @@ getTree (Node root tree) (x:y:xs)
 
 deleteTree1::Tree->[String]->Tree
 deleteTree1 q@(CV _ _ ) _ = q
-deleteTree1 q [x] = q 
+deleteTree1 q [x] = q
 deleteTree1 a@(Node root tree) [x,y]
   |root == x && (not$null filtNodes) = Node root filteredNodes
   |root == x && (not$null filtLeafs) = Node root filteredLeafs
@@ -360,43 +397,93 @@ openMonad path = do
       h <- openFile path ReadMode
       return (Just h)
 checkMonadSingle :: [Char] -> IO Bool
-checkMonadSingle path = do   
+checkMonadSingle path = do
      tryopen <- openMonad path
      case tryopen of
       Nothing -> return False
       (Just h) ->do
-         hClose h 
+         hClose h
          return True
 
 checkMonadSpam :: [Char] -> IO Bool
-checkMonadSpam path = do   
+checkMonadSpam path = do
      tryopen <- openMonad path
      case tryopen of
-      Nothing -> do 
+      Nothing -> do
         putStrLn "File not found | Please write a valid path or close the program:"
-        p <- getLine 
-        checkMonadSpam p 
+        p <- getLine
+        checkMonadSpam p
       (Just h) ->do
-         hClose h 
+         hClose h
          return True
-
+mhm::[String]->IO () --microHandleMonad
+mhm com@[c,p,value,path] 
+  |(c=="-s" || c=="--set") && cdisk = do
+               check <- checkMonadSingle path
+               if not check then die $"No Settings file found in "++path
+               else do
+               handle <- openFile path ReadMode
+               contents <- hGetContents handle
+               let filt = modifySymbol '|' False . modifySymbol  '|' False $ contents
+               let ptr = tryExtract filt
+               if eqTree ptr (CV "Parse Error" []) then die "File could't parse"
+               else do
+               let carg1= convertSet (p,value)
+               --putStrLn $ p++","++value++"|"++show ptr
+               let set = uncurry (addToTree ptr) carg1
+               tempPath <- getAppUserDataDirectory "SpieleEntwicklungsKombinat\\Paraworld"
+               (tempName, tempHandle) <- openTempFile tempPath "temp"
+               hPutStr tempHandle $ show set
+               hClose handle
+               hClose tempHandle
+               renameFile tempName path
+   |c=="-s" || c=="--set" && not cdisk = do
+               check <- checkMonadSingle path
+               if not check then die $"No Settings file found in "++path
+               else do
+               handle <- openFile path ReadMode
+               contents <- hGetContents handle
+               let filt = modifySymbol '|' False . modifySymbol  '|' False $ contents
+               let ptr = tryExtract filt
+               if eqTree ptr (CV "Parse Error" []) then die "File could't parse"
+               else do
+               let carg1= convertSet (p,value)
+              -- putStrLn $ p++","++value++"|"++show ptr++disk
+               let set = uncurry (addToTree ptr) carg1
+               let tempPath = disk++"\\"
+               (tempName, tempHandle) <- openTempFile tempPath "temp"
+               hPutStr tempHandle $ show set
+               hClose handle
+               hClose tempHandle
+               renameFile tempName path
+  |otherwise = die "If you get to this error you are insane"
+  where 
+    disk = take 2 (concat (words path)) 
+    cdisk = disk == "C:"
+mhm com  = die $"Set didn't have the right arguments"++concatMap ("\n"++) com
 main:: IO String
 main =
-  do 
+  do
      hcodepath <- getAppUserDataDirectory "SpieleEntwicklungsKombinat\\Paraworld\\Settings.cfg"
      tempPath <- getAppUserDataDirectory "SpieleEntwicklungsKombinat\\Paraworld"
      check <- checkMonadSingle hcodepath
      if not check then die "No Settings file found in AppData"
      else do
      args<-getArgs
-     handle <- openFile hcodepath ReadWriteMode
+     handle <- openFile hcodepath ReadMode
      contents <- hGetContents handle
-     let filt = modifySymbol '|' False $concat $ words contents
-   --putStrLn "Parsing..."
+     let filt = modifySymbol '|' False . modifySymbol  '|' False $ contents
      let ptr = tryExtract filt
      if (not$ eqTree ptr (CV "Parse Error" [])) then
        case args
           of
+            com@[command,path,value,cdd]
+             |elem com [["-s",path,value,cdd],["--set",path,value,cdd]]->
+              do
+                hClose handle
+                mhm com
+                return "Spawned"
+
             com@[command,path,value]
              |elem com [["-s",path,value],["--set",path,value]] ->
              do
@@ -432,7 +519,7 @@ main =
                  let carg = convertGet path
                  if (getTree ptr carg) == "Err:No value found" then do
                   die "Exit with Code (301) - Get returned nothing"-- !vfound
-                 else do 
+                 else do
                   putStrLn $ getTree ptr carg
                   return "GetLow"
              |otherwise -> die "Exit with Code (102) - Wrong Command"
@@ -441,7 +528,7 @@ main =
                   iotest True hcodepath
             _ -> die "Exit with Code (666) No valid arguments"
      else die "Exit with Code (100) - Parse Error"
-      
+
 
 
 --Set("path","value")
@@ -458,7 +545,7 @@ trComm str = case com of
     [t,d] = map ($str) [takeWhile (/='('),dropWhile (/='(') . takeWhile (/=')')]
     remwhite = concat . words
     com = remwhite $ map toUpper t
-    args = splitOn ","  $ remwhite $ tail d
+    args = splitOn ","  $ tail d
 
 cdfix str =if null rest || null (tail rest) then [""] else [cd,tail rest]
   where
