@@ -436,8 +436,8 @@ checkMonadSpam path = do
       (Just h) ->do
          hClose h
          return True
-mhm::[String]->IO () --microHandleMonad
-mhm com@[r,p,path]
+mhm::[String]->String->IO () --microHandleMonad
+mhm com@[r,p,path] orgdisk
  |(r=="-r" || r=="--remove") && cdisk = do
                check <- checkMonadSingle path
                if not check then die $"No Settings file found in "++path
@@ -483,8 +483,8 @@ mhm com@[r,p,path]
 
   where
     disk = take 2 (concat (words path))
-    cdisk = disk == "C:"
-mhm com@[c,p,value,path]
+    cdisk = disk == orgdisk
+mhm com@[c,p,value,path] orgdisk
   |(c=="-s" || c=="--set") && cdisk = do
                check <- checkMonadSingle path
                if not check then die $"No Settings file found in "++path
@@ -534,8 +534,8 @@ mhm com@[c,p,value,path]
   |otherwise = die "If you get to this error you are insane"
   where
     disk = take 2 (concat (words path))
-    cdisk = disk == "C:"
-mhm com  = die $"Set didn't have the right arguments"++concatMap ("\n"++) com
+    cdisk = disk == orgdisk
+mhm com _ = die $"Set didn't have the right arguments"++concatMap ("\n"++) com
 main:: IO String
 main =
   do
@@ -556,7 +556,8 @@ main =
              |com `elem` [["-s",path,value,cdd],["--set",path,value,cdd]]->
               do
                 hClose handle
-                mhm com
+                let orgdisk = take 2 (concat (words hcodepath)) 
+                mhm com orgdisk
                 return "Spawned"
 
             com@[command,path,value]
@@ -590,7 +591,8 @@ main =
                       return "End"
               |com `elem` [["-r",path,value],["--remove",path,value]] -> do
                 hClose handle
-                mhm com 
+                let orgdisk = take 2 (concat (words hcodepath)) 
+                mhm com orgdisk
                 return "End" 
 
               |otherwise -> if command `elem` ["-s","--set"] then die "Exit with Code (101) - wrong number of parameters" -- !#par
