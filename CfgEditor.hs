@@ -9,6 +9,7 @@ import System.Directory
 import Data.Char (isAsciiLower, isAsciiUpper, isDigit,toUpper,isUpper,isLower, isSpace)
 import Control.Exception
 import System.Exit
+import Text.ParserCombinators.ReadP (skipSpaces)
 
 newtype Parser a = Parser { parse :: String -> [(a,String)] }
 --Basic bind for parsers
@@ -137,17 +138,19 @@ data Tree = CV VarName Value | Node RootName [Tree] --deriving (Show)
 instance Show Tree where
  show t = showTree t 0
 
-
+fixRootName str
+ |elem '=' str = (takeWhile (/='=') str) ++ " = " ++ (tail . dropWhile (/='=')) str
+ |otherwise = str
 tabNode (CV _ _ ) = []
 tabNode (Node _ _) = "\t"
 showTree::Tree->Int->String
 showTree (CV varname value) i = tabs++varname++" = "++"'"++value++"'\n"
   where tabs =replicate i '\t'
-showTree (Node rootName ls) 0 = rootName++" {\n"++concatMap (\x-> tabNode x ++showTree x 1 ) ls ++"}\n"
-showTree (Node rootName ls) i = init tabs++rootName++" {\n"++concatMap (\x-> tabNode x ++showTree x (i+1) ) ls ++tabs++"}\n"
+showTree (Node rootName ls) 0 = fixRootName rootName++" {\n"++concatMap (\x-> tabNode x ++showTree x 1 ) ls ++"}\n"
+showTree (Node rootName ls) i = init tabs++fixRootName rootName++" {\n"++concatMap (\x-> tabNode x ++showTree x (i+1) ) ls ++tabs++"}\n"
   where tabs =replicate i '\t'
 --Paraworldstuffparse
-var :: Parser [Char]
+var :: Parser String
 var = many $ alphanum <|> uscore
 parseNull::Parser Tree
 parseNull =
@@ -158,8 +161,7 @@ parseNull =
 
 parseCV::Parser Tree
 parseCV =
-  do
-    parseNull
+  parseNull
     <|>
     do
     varname <- var
@@ -194,9 +196,29 @@ parseTree =
      return  (Node (root++a) ls)
    <|>
    parseCV
-
-{- next time will try something for now is gg 
-freeParseTree :: Parser Tree
+{-
+safetyFirst::Parser String 
+safetyFirst = do
+    spaces
+    varname <- var
+    s <- many $ satisfy (/= '\'')
+    return (varname++s++"|")
+allParse::Parser Char
+allParse = do
+  s <-  satisfy (/= '}')
+  return (s)
+parseCVS::Parser String
+parseCVS =
+    do
+    varname <- var
+    spaces
+    reserved "="
+    spaces
+    s <- many $ satisfy (/= '\'')
+    char '\''
+    return (varname++" = "++ s++"|")
+-- next time will try something for now is gg 
+freeParseTree :: Parser String
 freeParseTree =  
   do 
      spaces 
@@ -208,33 +230,32 @@ freeParseTree =
      spaces
      ls <-sepBy1 (spaces *> char '|' <* spaces) freeParseTree
      spaces
-     reserved "}"
-     return  (Node (root++a) ls)
+     return  ((root++a)++"{"++concat ls++"}")
    <|>
-   parseCV
+   parseCVS
    <|>
-   do
-    spaces
-    varname <- var
-    s <- many $ satisfy (/= '\'')
-    return (CV varname s)
+   many allParse
+   
+
+
+
+
+unparsedPart str = if null p then do putStrLn "Parse failed miserably" else do putStrLn $ "Parsed part : \n"++show a++"\n Unparsed: "++b
+  where p@[(a,b)] =  parse freeParseTree str
 -}
-
-
-tryExtract str = if null datas then (CV "Parse Error" "")
- else fst . head $ datas
+tryExtract str = if null $ fst datas then CV "Parse Error" ""
+ else fst . head $ fst datas
  where
-      datas = parse parseTree str
-
+      datas = (parse parseTree str,[])
 alphanumeric arg = any (\x->x arg) [isDigit,isAsciiLower,isAsciiUpper]
  --spacenewlinetrick pls dont write inside the cfg urself
-modifySymbol :: Char -> Bool -> [Char] -> [Char]
+modifySymbol :: Char -> Bool -> String -> String
 modifySymbol _ b [] = []
 modifySymbol _ b [x]  = [x]
 modifySymbol s b (x:y:xs)
  |isSpace x && not b = modifySymbol s b (y:xs)
- |(x=='\'') && alphanumeric y && b = x:s:modifySymbol s False (y:xs)
- |(x=='\'') && alphanumeric y = x:y:modifySymbol s True (xs)
+ |x=='\'' && alphanumeric y && b = x:s:modifySymbol s False (y:xs)
+ |x=='\'' && alphanumeric y = x:y:modifySymbol s True xs
  |x=='}' && alphanumeric y  = x:s:modifySymbol s b (y:xs)
  |x=='\'' = x:modifySymbol s (not b) (y:xs)
  |otherwise = x:modifySymbol s b (y:xs)
@@ -248,9 +269,9 @@ iotest b hpath =
      let filt = modifySymbol '|' False . modifySymbol  '|' False $ contents
      putStrLn "Parsing..."
      let ptr = tryExtract filt
-     if (not$ eqTree ptr (CV "Parse Error" [])) then do
+     if not$ eqTree ptr (CV "Parse Error" []) then do
        putStrLn "Parsing Successful"
-       if (b) then do
+       if b then do
           putStrLn "Commands are:\n Set(path,value) - set argpath argvalue \n Get(path) - get argpath \n Remove(path) - remove path \n Q - exit \n CD path - change directory \n PWD - current directory"
           iotest False hpath
        else do
@@ -272,14 +293,14 @@ iotest b hpath =
        let cs = "-s"
        let get = "-g"
        let rem = "-r"
-       if (length com == 3 && head com == cs) then do
+       if length com == 3 && head com == cs then do
           let arg1 = com!!1
           let arg2 = com!!2
           putStrLn $ "Command: Set \n| argpath = "++arg1++"\n| argvalue = "++arg2
           let carg1= convertSet (arg1,arg2)
-          let set = addToTree ptr (fst carg1) (snd carg1)
-          if strongEqTree set ptr then do
-                  putStrLn "Set Failed | Nothing was changed"
+          let set = uncurry (addToTree ptr) carg1
+          if strongEqTree set ptr || not (parseCheck set) then do
+                  putStrLn $"Set Failed | Nothing was changed"
                   iotest False hpath
           else do
           (tempName, tempHandle) <- openTempFile tempPath "temp"
@@ -288,13 +309,13 @@ iotest b hpath =
           hClose tempHandle
           renameFile tempName hpath
           iotest False hpath
-        else if (length com == 2) then
-            if (head com == get) then do
+        else if length com == 2 then
+            if head com == get then do
                putStrLn $ "Command: Get \n| argpath = "++com!!1
                let carg = convertGet $com!!1
                putStrLn $ "Value:"++getTree ptr carg
                iotest False hpath
-            else if (head com == rem) then do
+            else if head com == rem then do
                putStrLn $ "Command: Remove \n| argpath = "++com!!1
                let carg2 = convertGet $ com!!1
                let r = deleteTree ptr carg2
@@ -325,7 +346,7 @@ strongEqTree::Tree->Tree->Bool
 strongEqTree (CV _ _) (Node _ _) = False
 strongEqTree (Node _ _) (CV _ _) = False
 strongEqTree (CV n1 t1) (CV n2 t2) = n1==n2 && t1==t2
-strongEqTree (Node n1 t1) (Node n2 t2) = n1 == n2 && length t1==length t2 && and (zipWith (strongEqTree) t1 t2)
+strongEqTree (Node n1 t1) (Node n2 t2) = n1 == n2 && length t1==length t2 && and (zipWith strongEqTree t1 t2)
 
 eqTree (CV _ _) (Node _ _) = False
 eqTree (Node _ _) (CV _ _) = False
@@ -334,16 +355,16 @@ eqTree (Node n1 t1) (Node n2 t2) = n1 == n2
 addToTree::Tree->[String]->(VarName,Value)->Tree
 addToTree y@(Node root tree) [] (vname,vvalue) = y
 addToTree y@(Node root tree) [x] (vname,vvalue)
-  |root == x = if null search then Node root $tree++[(CV vname vvalue)] else Node root filtered
+  |root == x = if null search then Node root $tree++[CV vname vvalue] else Node root filtered
   |otherwise = y
   where
-      search = [(CV n vvalue)|(CV n v)<-tree,vname==n]
-      filtered = map (\x->if not$ eqTree x (CV vname "") then x else (CV vname vvalue)) tree
+      search = [CV n vvalue|(CV n v)<-tree,vname==n]
+      filtered = map (\x->if not$ eqTree x (CV vname "") then x else CV vname vvalue) tree
 addToTree z@(Node root tree) (x:y:xs) cv@(vname,vvalue)
-  |root == x = if null search then addToTree (Node root (tree++[(Node y [])])) (x:y:xs) cv else Node root filtered
+  |root == x = if null search then addToTree (Node root (tree++[Node y []])) (x:y:xs) cv else Node root filtered
   |otherwise = z
    where
-      search = [(Node r t)|(Node r t)<-tree,r==y]
+      search = [Node r t|(Node r t)<-tree,r==y]
       filtered = map (\x->if eqTree x (Node y []) then addToTree x (y:xs) cv else x) tree
 
 
@@ -358,24 +379,24 @@ getTree (CV name v) [x]
  |otherwise = "Err:No value found"
 getTree (Node root _) [x] = "Err:No value found"
 getTree (Node root tree) (x:y:xs)
-  |root == x && (not$null filtNodes) = getTree (head filtNodes) (y:xs)
-  |root == x && (not$null filtLeafs) = getTree (head filtLeafs) (y:xs)
+  |root == x && not (null filtNodes) = getTree (head filtNodes) (y:xs)
+  |root == x && not (null filtLeafs) = getTree (head filtLeafs) (y:xs)
   |otherwise = "Err:No value found"
     where
-      filtNodes = [(Node r t)|(Node r t)<-tree,r==y]
-      filtLeafs = [(CV n v)|(CV n v)<-tree,n==y]
+      filtNodes = [Node r t|(Node r t)<-tree,r==y]
+      filtLeafs = [CV n v|(CV n v)<-tree,n==y]
 
 
 deleteTree1::Tree->[String]->Tree
 deleteTree1 q@(CV _ _ ) _ = q
 deleteTree1 q [x] = q
 deleteTree1 a@(Node root tree) [x,y]
-  |root == x && (not$null filtNodes) = Node root filteredNodes
-  |root == x && (not$null filtLeafs) = Node root filteredLeafs
+  |root == x && not (null filtNodes) = Node root filteredNodes
+  |root == x && not (null filtLeafs) = Node root filteredLeafs
   |otherwise = a
     where
-     filtNodes = [(Node r t) | (Node r t)<-tree,r==y]
-     filtLeafs = [(CV n v)|(CV n v)<-tree,n==y]
+     filtNodes = [Node r t | (Node r t)<-tree,r==y]
+     filtLeafs = [CV n v|(CV n v)<-tree,n==y]
      filteredNodes = filter (\x->not $eqTree x (Node y [])) tree
      filteredLeafs = filter (\x->not $eqTree x (CV y [])) tree
 deleteTree1 a@(Node root tree) (x:y:xs)
@@ -392,11 +413,10 @@ deleteTree a@(Node root tree) b =Node a1 $map (`deleteTree` b) filt
   isEmptyNode _ = False
   (Node a1 b2) = deleteTree1 a b
 
-openMonad path = do
-    handle (\(e::IOException) -> return Nothing) $ do
-      h <- openFile path ReadMode
-      return (Just h)
-checkMonadSingle :: [Char] -> IO Bool
+openMonad path = handle (\(e::IOException) -> return Nothing) $ do
+  h <- openFile path ReadMode
+  return (Just h)
+checkMonadSingle :: String -> IO Bool
 checkMonadSingle path = do
      tryopen <- openMonad path
      case tryopen of
@@ -405,7 +425,7 @@ checkMonadSingle path = do
          hClose h
          return True
 
-checkMonadSpam :: [Char] -> IO Bool
+checkMonadSpam :: String -> IO Bool
 checkMonadSpam path = do
      tryopen <- openMonad path
      case tryopen of
@@ -417,7 +437,54 @@ checkMonadSpam path = do
          hClose h
          return True
 mhm::[String]->IO () --microHandleMonad
-mhm com@[c,p,value,path] 
+mhm com@[r,p,path]
+ |(r=="-r" || r=="--remove") && cdisk = do
+               check <- checkMonadSingle path
+               if not check then die $"No Settings file found in "++path
+               else do
+               handle <- openFile path ReadMode
+               contents <- hGetContents handle
+               let filt = modifySymbol '|' False . modifySymbol  '|' False $ contents
+               let ptr = tryExtract filt
+               if eqTree ptr (CV "Parse Error" []) then die "File could't parse"
+               else do
+               let carg2 = convertGet p
+               let r = deleteTree ptr carg2
+               if strongEqTree r ptr then
+                die "Exit with Code (201) - Nothing was changed" --Remove changed nothing
+               else do
+                 tempPath <- getAppUserDataDirectory "SpieleEntwicklungsKombinat\\Paraworld"
+                 (tempName, tempHandle) <- openTempFile tempPath "temp"
+                 hPutStr tempHandle $ show r
+                 hClose handle
+                 hClose tempHandle
+                 renameFile tempName path
+  |(r=="-r" || r=="--remove") && not cdisk = do
+                check <- checkMonadSingle path
+                if not check then die $"No Settings file found in "++path
+                else do
+                handle <- openFile path ReadMode
+                contents <- hGetContents handle
+                let filt = modifySymbol '|' False . modifySymbol  '|' False $ contents
+                let ptr = tryExtract filt
+                if eqTree ptr (CV "Parse Error" []) then die "File could't parse"
+                else do
+                let carg2 = convertGet p
+                let r = deleteTree ptr carg2
+                if strongEqTree r ptr then
+                 die "Exit with Code (201) - Nothing was changed" --Remove changed nothing
+                else do
+                 let tempPath = disk++"\\"
+                 (tempName, tempHandle) <- openTempFile tempPath "temp"
+                 hPutStr tempHandle $ show r
+                 hClose handle
+                 hClose tempHandle
+                 renameFile tempName path
+
+  where
+    disk = take 2 (concat (words path))
+    cdisk = disk == "C:"
+mhm com@[c,p,value,path]
   |(c=="-s" || c=="--set") && cdisk = do
                check <- checkMonadSingle path
                if not check then die $"No Settings file found in "++path
@@ -431,6 +498,10 @@ mhm com@[c,p,value,path]
                let carg1= convertSet (p,value)
                --putStrLn $ p++","++value++"|"++show ptr
                let set = uncurry (addToTree ptr) carg1
+               if not (parseCheck set) then do
+                hClose handle
+                die "Set failed , nothing was changed"
+               else do 
                tempPath <- getAppUserDataDirectory "SpieleEntwicklungsKombinat\\Paraworld"
                (tempName, tempHandle) <- openTempFile tempPath "temp"
                hPutStr tempHandle $ show set
@@ -450,6 +521,10 @@ mhm com@[c,p,value,path]
                let carg1= convertSet (p,value)
               -- putStrLn $ p++","++value++"|"++show ptr++disk
                let set = uncurry (addToTree ptr) carg1
+               if  not (parseCheck set) then do
+                hClose handle
+                die "Set failed , nothing was changed"
+               else do 
                let tempPath = disk++"\\"
                (tempName, tempHandle) <- openTempFile tempPath "temp"
                hPutStr tempHandle $ show set
@@ -457,8 +532,8 @@ mhm com@[c,p,value,path]
                hClose tempHandle
                renameFile tempName path
   |otherwise = die "If you get to this error you are insane"
-  where 
-    disk = take 2 (concat (words path)) 
+  where
+    disk = take 2 (concat (words path))
     cdisk = disk == "C:"
 mhm com  = die $"Set didn't have the right arguments"++concatMap ("\n"++) com
 main:: IO String
@@ -474,39 +549,60 @@ main =
      contents <- hGetContents handle
      let filt = modifySymbol '|' False . modifySymbol  '|' False $ contents
      let ptr = tryExtract filt
-     if (not$ eqTree ptr (CV "Parse Error" [])) then
+     if not$ eqTree ptr (CV "Parse Error" []) then
        case args
           of
             com@[command,path,value,cdd]
-             |elem com [["-s",path,value,cdd],["--set",path,value,cdd]]->
+             |com `elem` [["-s",path,value,cdd],["--set",path,value,cdd]]->
               do
                 hClose handle
                 mhm com
                 return "Spawned"
 
             com@[command,path,value]
-             |elem com [["-s",path,value],["--set",path,value]] ->
+             |com `elem` [["-s",path,value],["--set",path,value]] ->
              do
                let carg1= convertSet (path,value)
-               let set = addToTree ptr (fst carg1) (snd carg1)
+               let set = uncurry (addToTree ptr) carg1
+               if not (parseCheck set) then die "Set failed nothing was changed" else do
                (tempName, tempHandle) <- openTempFile tempPath "temp"
                hPutStr tempHandle $ show set
                hClose handle
                hClose tempHandle
                renameFile tempName hcodepath
                return "Spawned"
-              |otherwise -> if elem command ["-s","--set"] then do
-                    die "Exit with Code (101) - wrong number of parameters" -- !#par
+              |com `elem` [["-g",path,value],["--get",path,value]] ->
+              do
+                hClose handle
+                check1 <- checkMonadSingle value
+                if not check1 then die $"No Settings file found in "++value
+                else 
+                  do 
+                    handle1 <- openFile value ReadMode
+                    contents1 <- hGetContents handle1
+                    let filt1 = modifySymbol '|' False . modifySymbol  '|' False $ contents1
+                    let ptr1 = tryExtract filt1
+                    let cs = convertGet path
+                    --putStrLn $ show $ convertGet path
+                    if getTree ptr1 cs == "Err:No value found" then die "Exit with Code (301) - Get returned nothing"-- !vfound
+                    else do
+                      putStrLn $ getTree ptr1 cs
+                      return "End"
+              |com `elem` [["-r",path,value],["--remove",path,value]] -> do
+                hClose handle
+                mhm com 
+                return "End" 
+
+              |otherwise -> if command `elem` ["-s","--set"] then die "Exit with Code (101) - wrong number of parameters" -- !#par
                else
                 die "Exit with Code (102) - Wrong Command"
             com@[command,path]
-             |elem com [["-r",path],["--remove",path]] ->
+             |com `elem` [["-r",path],["--remove",path]] ->
                do
                  let carg2 = convertGet path
                  let r = deleteTree ptr carg2
                  if strongEqTree r ptr then
-                  do
-                    die "Exit with Code (201) - Nothing was changed" --Remove changed nothing
+                  die "Exit with Code (201) - Nothing was changed" --Remove changed nothing
                  else do
                  (tempName, tempHandle) <- openTempFile tempPath "temp"
                  hPutStr tempHandle $ show r
@@ -514,20 +610,22 @@ main =
                  hClose tempHandle
                  renameFile tempName hcodepath
                  return "Deded"
-             |elem com [["-g",path],["--get",path]] ->
+             |com `elem` [["-g",path],["--get",path]] ->
               do
                  let carg = convertGet path
-                 if (getTree ptr carg) == "Err:No value found" then do
-                  die "Exit with Code (301) - Get returned nothing"-- !vfound
+                 if getTree ptr carg == "Err:No value found" then die "Exit with Code (301) - Get returned nothing"-- !vfound
                  else do
                   putStrLn $ getTree ptr carg
                   return "GetLow"
              |otherwise -> die "Exit with Code (102) - Wrong Command"
+             
             [] -> do
                   putStrLn hcodepath
                   iotest True hcodepath
             _ -> die "Exit with Code (666) No valid arguments"
-     else die "Exit with Code (100) - Parse Error"
+     else do
+              --unparsedPart filt
+              die "Exit with Code (100) - Parse Error"
 
 
 
@@ -550,4 +648,15 @@ trComm str = case com of
 cdfix str =if null rest || null (tail rest) then [""] else [cd,tail rest]
   where
     (cd,rest) = splitAt 2 str
-    
+
+parseCheck tree 
+ |null parsed = False 
+ |otherwise = True
+  where 
+    str = modifySymbol '|' False . modifySymbol  '|' False $ show tree
+    [(a,b)] = parse parseTree str
+    parsed = parse parseTree str
+   
+
+
+
