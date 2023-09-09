@@ -152,7 +152,7 @@ showTree (Node rootName ls) 0 = fixRootName rootName++" {\n"++concatMap (\x-> ta
 showTree (Node rootName ls) i = init tabs++fixRootName rootName++" {\n"++concatMap (\x-> tabNode x ++showTree x (i+1) ) ls ++tabs++"}\n"
   where tabs =replicate i '\t'
 --Paraworldstuffparse
-set = ['a'..'z']++['A'..'Z']++[':','$','#','(',')','[',']','_','/']++['0'..'9']
+set = ['a'..'z']++['A'..'Z']++[':','$','#','(',')','[',']','_','/','-']++['0'..'9']
 var :: Parser String
 var = negative <|>  many (oneOf1 set)
 varSpecial = negative <|>  many (oneOf1 set)
