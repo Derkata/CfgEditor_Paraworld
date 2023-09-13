@@ -36,7 +36,7 @@ showTree::Tree1->Int->String
 showTree (Node (varname,value) []) i = tabs++varname++" = "++"'"++value++"'\n"
   where tabs =replicate i '\t'
 showTree (Node rootName ls) 0 = fixRootName rootName++" {\n"++concatMap (\x-> tabNode x ++showTree x 1 ) ls ++"}\n"
-showTree (Node rootName ls) i = init tabs++fixRootName rootName++" {\n"++concatMap (\x-> tabNode x ++showTree x (i+1) ) ls ++tabs++"}\n"
+showTree (Node rootName ls) i = initN tabs++fixRootName rootName++" {\n"++concatMap (\x-> tabNode x ++showTree x (i+1) ) ls ++tabs++"}\n"
   where tabs =replicate i '\t'
 
 
@@ -67,7 +67,7 @@ instance Show a => Show (ParseResult a) where
     where
       formatErrors []         = error "No errors to format"
       --formatErrors [err]      = err
-      formatErrors (err:errs) = err 
+      formatErrors (err:errs) = err
       delim = "\n-> "
       padNewline '\n' = '\n':replicate (length delim - 1) ' '
       padNewline c    = [c]
@@ -275,65 +275,72 @@ fixlines str
  |notElem '=' str && notElem '}' str && (all (`notElem` set) str) = "    \\n "
  |notElem '=' str && notElem '}' str = filt ++" = "++"\'\'"++" {}\n"
  |notElem '=' str  && notElem '{' str && notElem '}' str && filtQuotes == 1 = filt ++" {}\n"
- |elem '}' str = let t = (takeWhile (/= '}') str) in t++"}\n"
+ |elem '}' str && (emptyRow $tail (dropWhile (/='}') str)) = let t = (takeWhile (/= '}') str) in t++"}\n"
  |otherwise = str++"\n"
   where
     filt = filter (/= '{') str
     filtQuotes =length $ filter (== '\'') str
     rmw = concat (words filt)
 --
+initN [] = []
+initN str = init str
 fixSeparator :: String -> String -> Bool
 fixSeparator [] _ = False
 fixSeparator _ [] = False
 fixSeparator str1 str2 = elem '}' str1 && elem '}' str2 && check1== head check2 && check1 == '}'
   where
-    check1 = last (init str1)
+    check1 = last (initN str1)
     check2 = filter (not . isSpace) str2
 fixSeparation :: [String] -> [String]
 fixSeparation [] = []
 fixSeparation [x] = [x]
 fixSeparation (x:y:more)
  |fixSeparator x y = x:fixSeparation (y:more)
- |elem '}' x && (not $ emptyRow y) && (not (null y))= (init x++",\n"):fixSeparation (y:more)
+ |elem '}' x && (not $ emptyRow y) && (not (null y))= (initN x++",\n"):fixSeparation (y:more)
  |otherwise = x:fixSeparation (y:more)
 empty1 :: String -> Bool
-empty1 "" = True 
+empty1 "" = True
 empty1 _ = False
-format1 str =concat$ fixSeparation $ map (fixlines . init . filter (/='\r')) (lines str)
+format1 str =(initN $ concat$ fixSeparation $ map (fixlines . removeLastN . filter (/='\r')) (lines str))
  where remTab = filter (/= '\t')
-(Just bom) =  TH.decodeHex $ DT.pack "efbbbf"
-main = 
+(Just bom) =  TH.decodeHex $ DT.pack "efbbbf" --
+main =
   do
      [path]<-getArgs
      contents<-BS.readFile path
      let c =  BS.toStrict $ BS.take 3 contents
      let isBom = bom == c
-     if isBom then 
-       do     
-          contents1h <- openFile path ReadMode 
+     if isBom then--
+       do
+          contents1h <- openFile path ReadMode
           contents11 <- hGetContents contents1h
           let contents1 = drop 3 contents11
-          let save = runParser parseTree $ format1 contents1
+          let formated = format1 contents1
+          let save = runParser parseTree formated
           case save of
-             (Result e) -> return ()
+             (Result (s,d)) -> if all (`elem` "\n\t\r ") s || null s then return () else putStrLn 
+              $ "There are elements or multiple \\n at line: "++show (length $ (lines . show) d)++" after Root {} class"
              _ -> putStrLn $show save else do
-       c2 <- openFile path ReadMode 
+       c2 <- openFile path ReadMode
        contents3 <- hGetContents c2
-       let save1 = runParser parseTree $ format1 contents3
-       let a= runParser parseTree (format1 contents3)
+       let numLines = length $ lines contents3
+       let formated = format1 contents3
+       let a= runParser parseTree formated
        case a of
-        (Result s) -> return ()
+        (Result (s,d)) ->if all (`elem` "\n\t\r ") s || null s then return () else putStrLn 
+         $  "There are elements or multiple \\n at line: "++show (length $ (lines . show) d)++" after Root {} class"
         _ -> putStrLn $show a
-    --
-     --putStrLn $ formated=
+
      return ()
+removeLastN [] = []
+removeLastN str = if last str == '\n' then initN str else str
 tests = do
      path <- getAppUserDataDirectory "SpieleEntwicklungsKombinat\\Paraworld\\Settings.cfg"
      tempPath <- getAppUserDataDirectory "SpieleEntwicklungsKombinat\\Paraworld"
-     c2 <- openFile path ReadMode 
+     c2 <- openFile path ReadMode
      contents3 <- hGetContents c2
      let save1 = runParser parseTree $ format1 contents3
      let a= runParser parseTree (format1 contents3)
-     putStrLn $  format1 contents3
-     putStrLn $ show a
-     return ()
+     --putStrLn $  format1 contents3
+     putStrLn  $show a
+     return ()--
