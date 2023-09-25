@@ -10,7 +10,7 @@ Editor and parser for Settings.cfg and other Paraworld config files in the same 
 * CD path - changes work directory (work file) to given path - must be the full path to the file to be loaded for editing
 * PWD - shows current working directory/path of currently loaded file
   
-*The terminal loads Settings.cfg in path "...\AppData\Roaming\SpieleEntwicklungsKombinat\Paraworld" by default - use CD to change
+*The terminal loads Settings.cfg in path "...\AppData\Roaming\SpieleEntwicklungsKombinat\Paraworld" by default on startup - use CD to change
 
 
 ## Commands, when the executable is called with arguments:
