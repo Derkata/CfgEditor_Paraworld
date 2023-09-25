@@ -1,9 +1,11 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE LambdaCase #-}
+module ImprovedParser where
 import qualified Data.ByteString.Char8 as C
 import qualified Text.Hex as TH
 import qualified Data.Text as DT
 import qualified Data.ByteString.Lazy as BS
+import qualified Data.ByteString as BSS
 import Data.Text.Encoding (decodeUtf8)
 import Control.Applicative (Alternative(..))
 import Control.Monad (replicateM)
@@ -25,14 +27,19 @@ import Data.List.Split.Internals (Chunk(Text))
 
 type RootName = String
 type Value = String
-data Tree1 = Node (RootName,Value) [Tree1]
-instance Show Tree1 where show t = showTree t 0
+data Tree = Node (RootName,Value) [Tree]
+instance Show Tree where show t = showTree t 0
 tabNode (Node _ []) = ""
 tabNode (Node (root,value) _) = "\t"
 
+fixRootName (rootName,[]) = rootName
 fixRootName (rootName,value)= rootName++" = " ++ "\'"++value++"\'"
 
-showTree::Tree1->Int->String
+
+showTree::Tree->Int->String
+showTree (Node ("Root",[]) []) i = "Root = ''"
+showTree (Node (varname,[]) []) i = tabs ++ varname ++"\n"
+  where tabs =replicate i '\t'
 showTree (Node (varname,value) []) i = tabs++varname++" = "++"'"++value++"'\n"
   where tabs =replicate i '\t'
 showTree (Node rootName ls) 0 = fixRootName rootName++" {\n"++concatMap (\x-> tabNode x ++showTree x 1 ) ls ++"}\n"
@@ -251,7 +258,7 @@ value' = do
     then "" <$ char '\''
     else do (:) <$> char c <*> value'
 value = char '\'' *> value'
-parseTree :: Parser String Tree1
+parseTree :: Parser String Tree
 parseTree =  do
   spaces
   var <- varname
@@ -301,14 +308,15 @@ fixSeparation (x:y:more)
 empty1 :: String -> Bool
 empty1 "" = True
 empty1 _ = False
-format1 str =(initN $ concat$ fixSeparation $ map (fixlines . removeLastN . filter (/='\r')) (lines str))
+format1 str =initN $ concat$ fixSeparation $ map (fixlines . removeLastN . filter (/='\r')) (lines str)
  where remTab = filter (/= '\t')
 (Just bom) =  TH.decodeHex $ DT.pack "efbbbf" --
-main =
+parsePath::FilePath->IO (Tree,Bool)
+parsePath path =
   do
-     [path]<-getArgs
-     contents<-BS.readFile path
-     let c =  BS.toStrict $ BS.take 3 contents
+     --[path]<-getArgs
+     contents<-BSS.readFile path
+     let c =  BSS.take 3 contents
      let isBom = bom == c
      if isBom then--
        do
@@ -318,20 +326,35 @@ main =
           let formated = format1 contents1
           let save = runParser parseTree formated
           case save of
-             (Result (s,d)) -> if all (`elem` "\n\t\r ") s || null s then return () else putStrLn 
-              $ "There are elements or multiple \\n at line: "++show (length $ (lines . show) d)++" after Root {} class"
-             _ -> putStrLn $show save else do
+             (Result (s,d)) -> if all (`elem` "\n\t\r ") s || null s then do 
+              hClose contents1h 
+              return (d,isBom) else do 
+              putStrLn $ "There are elements or multiple \\n at line: "++show (length $ (lines . show) d)++" after Root {} class"
+              hClose contents1h
+              return (Node ("грешка","") [],isBom)
+             _ -> do 
+              putStrLn $show save
+              return (Node ("грешка","") [],isBom)
+               else do
        c2 <- openFile path ReadMode
        contents3 <- hGetContents c2
        let numLines = length $ lines contents3
        let formated = format1 contents3
        let a= runParser parseTree formated
        case a of
-        (Result (s,d)) ->if all (`elem` "\n\t\r ") s || null s then return () else putStrLn 
-         $  "There are elements or multiple \\n at line: "++show (length $ (lines . show) d)++" after Root {} class"
-        _ -> putStrLn $show a
+        (Result (s,d)) ->if all (`elem` "\n\t\r ") s || null s 
+          then do 
+           hClose c2 
+           return (d,isBom) 
+           else do
+            putStrLn $  "There are elements or multiple \\n at line: "++show (length $ (lines . show) d)++" after Root {} class"
+            hClose c2
+            return (Node ("грешка","") [],isBom)
+        _ -> do 
+          putStrLn $show a
+          hClose c2
+          return (Node ("грешка","") [],isBom)
 
-     return ()
 removeLastN [] = []
 removeLastN str = if last str == '\n' then initN str else str
 tests = do
