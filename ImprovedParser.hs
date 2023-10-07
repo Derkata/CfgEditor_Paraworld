@@ -325,7 +325,7 @@ parsePath path =
           let contents1 = drop 3 contents11
           let root = concat . words $ take 4 contents1
           if root /= "Root" then do
-             putStrLn $ "Invalid tree structure - Root node wrapper expected, instead got: " ++ root ++  " at start"
+             putStrLn $ "Invalid tree structure - Root node wrapper expected, instead got \"" ++ root ++  "\" at start"
              hClose contents1h
              return (Node ("грешка","") [],True)
           else do
