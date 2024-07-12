@@ -332,15 +332,18 @@ parsePath path =
             let formated = format1 contents1
             let save = runParser parseTree formated
             case save of
-              (Result (s,d)) -> if all (`elem` "\n\t\r ") s || null s then do 
-                hClose contents1h 
-                return (d,isBom) else do 
-                putStrLn $ "There are elements or multiple \\n at line: "++show (length $ (lines . show) d)++" after Root {} class"
-                hClose contents1h
-                return (Node ("грешка","") [],isBom)
+              (Result (s,d)) -> if all (`elem` "\n\t\r ") s || null s then 
+                do 
+                    hClose contents1h 
+                    return (d,isBom) 
+                else 
+                      do 
+                          putStrLn $ "There are elements or multiple \\n at line: "++show (length $ (lines . show) d)++" after Root {} class"
+                          hClose contents1h
+                          return (Node ("грешка","") [],isBom)
               _ -> do 
-                putStrLn $show save
-                return (Node ("грешка","") [],isBom)
+                    putStrLn $show save
+                    return (Node ("грешка","") [],isBom)
       else do
        c2 <- openFile path ReadMode 
        contents3 <- hGetContents c2

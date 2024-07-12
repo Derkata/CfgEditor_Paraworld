@@ -244,6 +244,20 @@ checkMonadSpam path = do
       (Just h) ->do
          hClose h
          return True
+
+checkMonadLock :: String -> IO Bool
+checkMonadLock path = do
+     tryopen <- openMonad path
+     case tryopen of
+      Nothing -> 
+        do
+           checkMonadLock path
+      (Just h) ->
+        do
+           hClose h
+           return True
+
+
 mhm::[String]->IO () --microHandleMonad
 mhm com@[r,p,path]
  |r=="-r" || r=="--remove" = do
@@ -265,11 +279,20 @@ mhm com@[r,p,path]
                                 BS.writeFile path bom
                                 appendFile path $show r
                               else do
+                                        available<- checkMonadLock path
+                                        (tempName, tempHandle) <- openTempFile tempPath "rem.txt"
+                                        hPutStr tempHandle $ show r
+                                        hClose tempHandle
+                                        rename <- try (renameFile tempName path):: IO (Either SomeException ())
+                                        case rename of
+                                              Left ex -> do
+                                                 (removeFile tempName)
+                                                 return ()
+                                              Right _ -> return ()
 
-                                  (tempName, tempHandle) <- openTempFile tempPath "temp"
-                                  hPutStr tempHandle $ show r
-                                  hClose tempHandle
-                                  renameFile tempName path
+
+
+                                    
 
                 
 
@@ -284,19 +307,41 @@ mhm com@[c,p,value,path]
                           let carg1= convertSet (p,value)
                           --putStrLn $ p++","++value++"|"++show ptr
                           let set = uncurry (addToTree ptr) carg1
-                          if not (parseCheck set) then do
-                            die "Set failed , nothing was changed"
-                          else do
+                          if not (parseCheck set) then 
+                            do
+                               die "Set failed , nothing was changed"
+                          else 
+                            do
                                 let tempPath =sp path
                                 
                                 if isBom then do
                                       BS.writeFile path bom
                                       appendFile path $show set
                                     else do
-                                      (tempName, tempHandle) <- openTempFile tempPath "temp"
-                                      hPutStr tempHandle $ show set
-                                      hClose tempHandle
-                                      renameFile tempName path
+                                      available<- checkMonadLock path
+                                      if available then do 
+                                          (tempName, tempHandle) <- openTempFile tempPath "set.txt"
+                                          hPutStr tempHandle $ show set
+                                          hClose tempHandle
+                                          rename <- try (renameFile tempName path):: IO (Either SomeException ())
+                                          case rename of
+                                              Left ex -> do
+                                                (removeFile tempName)
+                                                return ()
+                                              Right _ -> return ()
+                                      else 
+                                        do
+                                              checkMonadLock path
+                                              (tempName, tempHandle) <- openTempFile tempPath "set.txt"
+                                              hPutStr tempHandle $ show set
+                                              hClose tempHandle
+                                              rename <- try (renameFile tempName path):: IO (Either SomeException ())
+                                              case rename of
+                                                Left ex -> 
+                                                  do
+                                                    (removeFile tempName)
+                                                    return ()
+                                                Right _ -> return ()
   |otherwise = die "If you get to this error you are insane"
 mhm com  = die $"Set didn't have the right arguments"++concatMap ("\n"++) com
 main:: IO String
@@ -335,12 +380,18 @@ main =
                                   BS.writeFile hcodepath bom
                                   appendFile hcodepath $show set
                                   return "Spawned"
-                                else do
-                                  (tempName, tempHandle) <- openTempFile tempPath "temp"
-                                  hPutStr tempHandle $ show set
-                                  hClose tempHandle
-                                  renameFile tempName hcodepath
-                                  return "Spawned"
+                                else 
+                                  do
+                                            (tempName, tempHandle) <- openTempFile tempPath "Set.txt"
+                                            hPutStr tempHandle $ show set
+                                            hClose tempHandle
+                                            rename <- try (renameFile tempName hcodepath):: IO (Either SomeException ())
+                                            case rename of
+                                              Left ex -> do
+                                                (removeFile tempName)
+                                                return 0
+                                              Right _ -> return 1
+                                            return "Spawned"
               |com `elem` [["-g",path,value],["--get",path,value]] ->
               do
                 check1 <- checkMonadSingle value
@@ -390,10 +441,16 @@ main =
                                     appendFile hcodepath $show r
                                     return "Deded"
                                   else do
-                                    (tempName, tempHandle) <- openTempFile tempPath "temp"
+                                    available<- checkMonadLock hcodepath
+                                    (tempName, tempHandle) <- openTempFile tempPath "rem.txt"
                                     hPutStr tempHandle $ show r
                                     hClose tempHandle
-                                    renameFile tempName hcodepath --
+                                    rename <- try (renameFile tempName hcodepath):: IO (Either SomeException ())
+                                    case rename of
+                                              Left ex -> do
+                                                (removeFile tempName)
+                                                return 0
+                                              Right _ -> return 1
                                     return "Deded"
              |com `elem` [["-g",path],["--get",path]] ->
               do
