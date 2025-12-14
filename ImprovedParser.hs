@@ -20,7 +20,7 @@ import Numeric (showHex)
 import Prelude hiding (lines)
 import Text.Printf (printf)
 import System.Directory (getAppUserDataDirectory)
-import System.IO (openFile, IOMode (ReadMode), hGetContents, hClose)
+import System.IO (openFile, IOMode (ReadMode), hGetContents, hClose, hSetEncoding, utf8)
 import System.Environment (getArgs)
 import Trace.Hpc.Util (writeFileUtf8)
 import Data.List.Split.Internals (Chunk(Text))
@@ -321,6 +321,7 @@ parsePath path =
      if isBom then 
         do
           contents1h <- openFile path ReadMode
+          hSetEncoding contents1h utf8
           contents11 <- hGetContents contents1h
           let contents1 = drop 3 contents11
           let root = concat . words $ take 4 contents1
@@ -345,7 +346,8 @@ parsePath path =
                     putStrLn $show save
                     return (Node ("грешка","") [],isBom)
       else do
-       c2 <- openFile path ReadMode 
+       c2 <- openFile path ReadMode
+       hSetEncoding c2 utf8
        contents3 <- hGetContents c2
        let numLines = length $ lines contents3
        let formated = format1 contents3
@@ -376,6 +378,7 @@ tests = do
      path <- getAppUserDataDirectory "SpieleEntwicklungsKombinat\\Paraworld\\Settings.cfg"
      tempPath <- getAppUserDataDirectory "SpieleEntwicklungsKombinat\\Paraworld"
      c2 <- openFile path ReadMode
+     hSetEncoding c2 utf8
      contents3 <- hGetContents c2
      let save1 = runParser parseTree $ format1 contents3
      let a= runParser parseTree (format1 contents3)

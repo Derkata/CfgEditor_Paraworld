@@ -77,6 +77,7 @@ iotest b hpath =
                                                         else
                                                           do
                                                             (tempName, tempHandle) <- openTempFile tempPath "temp"
+                                                            hSetEncoding tempHandle utf8
                                                             hPutStr tempHandle $ show set
                                                             hClose tempHandle
                                                             renameFile tempName hpath
@@ -106,6 +107,7 @@ iotest b hpath =
                                                             iotest False hpath
                                                             else do
                                                               (tempName, tempHandle) <- openTempFile tempPath "temp"
+                                                              hSetEncoding tempHandle utf8
                                                               hPutStr tempHandle $ show r
                                                               hClose tempHandle
                                                               renameFile tempName hpath
@@ -281,6 +283,7 @@ mhm com@[r,p,path]
                               else do
                                         available<- checkMonadLock path
                                         (tempName, tempHandle) <- openTempFile tempPath "rem.txt"
+                                        hSetEncoding tempHandle utf8
                                         hPutStr tempHandle $ show r
                                         hClose tempHandle
                                         rename <- try (renameFile tempName path):: IO (Either SomeException ())
@@ -321,6 +324,7 @@ mhm com@[c,p,value,path]
                                       available<- checkMonadLock path
                                       if available then do 
                                           (tempName, tempHandle) <- openTempFile tempPath "set.txt"
+                                          hSetEncoding tempHandle utf8
                                           hPutStr tempHandle $ show set
                                           hClose tempHandle
                                           rename <- try (renameFile tempName path):: IO (Either SomeException ())
@@ -333,6 +337,7 @@ mhm com@[c,p,value,path]
                                         do
                                               checkMonadLock path
                                               (tempName, tempHandle) <- openTempFile tempPath "set.txt"
+                                              hSetEncoding tempHandle utf8
                                               hPutStr tempHandle $ show set
                                               hClose tempHandle
                                               rename <- try (renameFile tempName path):: IO (Either SomeException ())
@@ -383,6 +388,7 @@ main =
                                 else 
                                   do
                                             (tempName, tempHandle) <- openTempFile tempPath "Set.txt"
+                                            hSetEncoding tempHandle utf8
                                             hPutStr tempHandle $ show set
                                             hClose tempHandle
                                             rename <- try (renameFile tempName hcodepath):: IO (Either SomeException ())
@@ -443,6 +449,7 @@ main =
                                   else do
                                     available<- checkMonadLock hcodepath
                                     (tempName, tempHandle) <- openTempFile tempPath "rem.txt"
+                                    hSetEncoding tempHandle utf8
                                     hPutStr tempHandle $ show r
                                     hClose tempHandle
                                     rename <- try (renameFile tempName hcodepath):: IO (Either SomeException ())
